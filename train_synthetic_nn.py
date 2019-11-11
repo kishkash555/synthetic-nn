@@ -56,14 +56,19 @@ def class_assignment_layer(class_assignments):
     return l
 
 class Net(nn.Module):
-    def __init__(self, dims, n_classes, param_dict=None):
+    def __init__(self, dims, n_classes):
         super(Net, self).__init__()
+        
+        self.dims = dims
+        self.n_classes = n_classes
+        
         self.a = nn.Linear(dims, dims, bias=False)
         self.b = nn.Linear(dims, 2 ** dims, bias=False)
         self.b2 = torch.ones(2 ** dims)
         self.f = torch.zeros(2 ** dims)
         self.c = nn.Linear(2 ** dims, n_classes, bias=False)
 
+        
     def assign_values_to_layers(self, **kwargs):
         attrs_to_set = set(['a','b','c']).intersection(kwargs.keys())
         for attr in attrs_to_set:
@@ -85,8 +90,7 @@ class Net(nn.Module):
         return x
 
 
-def train(epochs):
-    net = Net()
+def train(net, trainloader, epochs):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
     for epoch in range(epochs):  # loop over the dataset multiple times
@@ -107,7 +111,7 @@ def train(epochs):
 
             # print statistics
             running_loss += loss.item()
-            if i % 2000 == 1999:    # print every 2000 mini-batches
+            if i % 50 == 49:    # print every 200 mini-batches
                 print('[{}, {}] loss: {:.3f}'.format(epoch + 1, i + 1, running_loss / 2000))
                 running_loss = 0.0
 
@@ -144,13 +148,26 @@ def orthant_detector_layer(d):
 
 
 
-def main():
-    a, b, f, b2, c, class_assigments, samples = generate_layers_and_samples(6, 8)
-    net = Net(6, 8)
-    y_before = net(samples[0])
-    net.assign_values_to_layers(a=a, b= b, f=f, b2=b2, c= c)
-    y_after = net(torch.Tensor(samples[:,0]))
-    print(y_before, y_after, class_assigments[0])
+def main(net = None, samples=None, class_assignments=None):
+    if type(net)==int:
+        seed = net
+        net = None
+    else:
+        seed = 1234
+    if net is None:
+        net = Net(6, 8)
+        a, b, f, b2, c, class_assignments, samples = generate_layers_and_samples(6, 8, seed)
+        net.assign_values_to_layers(a=a, b= b, f=f, b2=b2, c= c)
+
+    tensor_samples = torch.Tensor(samples.T)
+    correct = sum(np.argmax(net(tensor_samples).detach().numpy(), axis=1)==class_assignments)
+    print("correct before training: {}".format(correct))
+    trainloader = torch.utils.data.DataLoader(list(zip(tensor_samples, class_assignments)), batch_size=1, shuffle=True, num_workers=0)
+    train(net, trainloader, 100)
+    correct = sum(np.argmax(net(tensor_samples).detach().numpy(), axis=1)==class_assignments)
+    print("correct after training: {}".format(correct))
+    return net
+
 
 if __name__ == "__main__":
     main()
